@@ -61,3 +61,17 @@ class BinanceClient:
             raise BinanceException(
                 'close_open_orders', error.status_code, error.error_code, error.error_message
             ) from error
+        
+    def klines(self, symbol):
+        try:
+            resp = pd.DataFrame(self.client.klines(symbol, '15m'))
+            resp = resp.iloc[:,:6]
+            resp.columns = ['Time', 'Open', 'High', 'Low', 'Close', 'Volume']
+            resp = resp.set_index('Time')
+            resp.index = pd.to_datetime(resp.index, unit = 'ms')
+            resp = resp.astype(float)
+            return resp
+        except ClientError as error:
+            raise BinanceException(
+                'klines', error.status_code, error.error_code, error.error_message
+            ) from error

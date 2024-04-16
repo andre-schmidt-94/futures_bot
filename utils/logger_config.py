@@ -10,7 +10,7 @@ def strip_ansi_escape_codes(text):
 def configure_logging(log_file_path="output/logs/app.log"):
     # Create a logger
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
 
     # Create a formatter with timestamp and colored output
     formatter = ColoredFormatter(
