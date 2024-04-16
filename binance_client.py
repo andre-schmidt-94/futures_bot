@@ -1,9 +1,10 @@
 import logging
+import time
+import json
 from binance.um_futures import UMFutures
 from binance.error import ClientError
 from utils.exceptions import BinanceException
 import pandas as pd
-
 class BinanceClient:
     def __init__(self, api_key, api_secret):
         self.client = UMFutures(key = api_key, secret=api_secret)
@@ -75,3 +76,85 @@ class BinanceClient:
             raise BinanceException(
                 'klines', error.status_code, error.error_code, error.error_message
             ) from error
+
+    def set_mode(self, symbol, type):
+        try:
+            response = self.client.change_margin_type(
+                symbol=symbol, marginType=type, recvWindow=30000
+            )
+            return response
+        except ClientError as error:
+            logging.error("[set_mode] %s, %s, %s",
+                        error.status_code, 
+                        error.error_code, 
+                        error.error_message)
+        
+    def set_leverage(self, symbol, level):
+        try:
+            response = self.client.change_leverage(
+                symbol=symbol, leverage=level, recvWindow=30000 
+            )
+            return response
+        except ClientError as error:
+            raise BinanceException(
+                'set_leverage', error.status_code, error.error_code, error.error_message
+            ) from error
+    
+    # Price precision. BTC has 1, XRP has 4
+    def get_price_precision(self, symbol):
+        resp = self.client.exchange_info()['symbols']
+        for elem in resp:
+            if elem['symbol'] == symbol:
+                return elem['pricePrecision']
+
+
+    # Amount precision. BTC has3 , XRP has 1
+    def get_qty_precision(self, symbol):
+        resp = self.client.exchange_info()['symbols']
+        for elem in resp:
+            if elem['symbol'] == symbol:
+                return elem['quantityPrecision']
+            
+    def new_order(self, symbol, side, mode, leverage, volume, qty, tp, sl):
+        price = float(self.client.ticker_price(symbol)['price'])
+        qty_precision = self.get_qty_precision(symbol)
+        price_precision = self.get_price_precision(symbol)
+        qty = round(volume/price, qty_precision)
+        if side == 'buy':
+            try:
+                resp1 = self.client.new_order(symbol=symbol, side='BUY', type='LIMIT', quantity=qty, timeInForce='GTC', price=price, recvWindow=40000)
+                # print(symbol, side, "placing order")
+                logging.info(json.dumps(resp1))
+                time.sleep(2)
+                sl_price = round(price - price*sl, price_precision)
+                resp2 = self.client.new_order(symbol=symbol, side='SELL', type='STOP_MARKET', quantity=qty, timeInForce='GTC', stopPrice=sl_price, recvWindow=40000)
+                logging.info(json.dumps(resp2))
+                time.sleep(2)
+                tp_price = round(price + price * tp, price_precision)
+                resp3 = self.client.new_order(symbol=symbol, side='SELL', type='TAKE_PROFIT_MARKET', quantity=qty, timeInForce='GTC', stopPrice=tp_price, recvWindow=40000)
+                logging.info(json.dumps(resp3))
+            except ClientError as error:
+                logging.error(
+                    "[new_order] Found error. status: %s, error code: %s, error message: %s",
+                        error.status_code, 
+                        error.error_code, 
+                        error.error_message)
+        if side == 'sell':
+            try:
+                resp1 = self.client.new_order(symbol=symbol, side='SELL', type='LIMIT', quantity=qty, timeInForce='GTC', price=price, recvWindow=40000)
+                # print(symbol, side, "placing order")
+                logging.info(json.dumps(resp1))
+                time.sleep(2)
+                sl_price = round(price + price*sl, price_precision)
+                resp2 = self.client.new_order(symbol=symbol, side='BUY', type='STOP_MARKET', quantity=qty, timeInForce='GTC', stopPrice=sl_price, recvWindow=40000)
+                logging.info(json.dumps(resp2))
+                time.sleep(2)
+                tp_price = round(price - price * tp, price_precision)
+                resp3 = self.client.new_order(symbol=symbol, side='BUY', type='TAKE_PROFIT_MARKET', quantity=qty, timeInForce='GTC', stopPrice=tp_price, recvWindow=40000)
+                logging.info(json.dumps(resp3))
+            except ClientError as error:
+                logging.error(
+                    "[new_order] Found error. status: %s, error code: %s, error message: %s",
+                        error.status_code, 
+                        error.error_code, 
+                        error.error_message)
